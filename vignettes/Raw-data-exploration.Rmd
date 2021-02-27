@@ -21,6 +21,7 @@ knitr::opts_chunk$set(
 ```{r setup, echo=TRUE, }
 library("data.table")
 library("dplyr")
+library("sf")
 library("here")
 library("knitr")
 source("R/helpers_data-import.R" %>% here())
@@ -48,16 +49,16 @@ We have four data sources on geomarketing information.
 ### A glimpse on the geomarketing sources
 
 ```{r loadGeoData}
-load_raw_data$client_shops()
+client_shops <- load_raw_data$client_shops()
 head(client_shops)
 
-load_raw_data$client_customers()
+client_customers <- load_raw_data$client_customers()
 head(client_customers)
 
-load_raw_data$market_potential()
+market_potential <- load_raw_data$market_potential()
 head(market_potential)
 
-load_raw_data$competitors()
+sirene_competitors <- load_raw_data$competitors()
 head(sirene_competitors)
 
 ```
@@ -72,13 +73,13 @@ From the data we want to extract the population and the income of the IRIS from 
 
 
 ```{r loadInseeData}
-load_raw_data$iris_pop()
+iris_pop <- load_raw_data$iris_pop()
 head(iris_pop)
 
-load_raw_data$iris_income()
+iris_income <- load_raw_data$iris_income()
 head(iris_income)
 
-load_raw_data$mun_income()
+fr_mun_income <- load_raw_data$mun_income()
 fr_mun_income
 ```
 
@@ -174,6 +175,61 @@ totals <- client_customers %>%
 # as percentages 0.5580244 % of observations, 0.5117703% of sales
 losses / totals
 ```
+
+
+## Investigate identification with the geometries
+
+
+We can secure identification of all data points by looking at some of the previous definition of the IRIS geometries and by 
+
+```{r loadIgnData}
+iris_poly19 <- load_raw_data$iris_poly19()
+iris_poly16 <- load_raw_data$iris_poly16()
+iris_poly15 <- load_raw_data$iris_poly15()
+iris_poly14 <- load_raw_data$iris_poly14()
+
+geomarketing_iris <- market_potential$IRIS
+length(unique(geomarketing_iris))
+length(unique(iris_poly19$CODE_IRIS))
+length(unique(iris_poly16$CODE_IRIS))
+length(unique(iris_poly15$CODE_IRIS))
+length(unique(iris_poly14$DCOMIRIS))
+
+# based on 2019 IRIS we can not identify 1809 regions
+sum(!geomarketing_iris %in% iris_poly19$CODE_IRIS)
+
+# based on 2016 IRIS we can not identify 834 regions
+sum(!geomarketing_iris %in% iris_poly16$CODE_IRIS)
+
+# based on 2015 IRIS we can not identify 39 regions
+sum(!geomarketing_iris %in% iris_poly15$CODE_IRIS)
+loss <- sum(market_potential$mp[!geomarketing_iris %in% iris_poly15$CODE_IRIS])
+loss/ sum(market_potential$mp)
+
+
+# based on 2014 IRIS we can not identify 9 regions
+sum(!geomarketing_iris %in% iris_poly14$DCOMIRIS)
+
+# based on 2014 + 2015 IRIS we can not identify 4 regions
+sum(!geomarketing_iris %in% c(iris_poly14$DCOMIRIS,iris_poly15$CODE_IRIS))
+
+orphan_iris <- market_potential$IRIS[
+  !geomarketing_iris %in% c(iris_poly14$DCOMIRIS,iris_poly15$CODE_IRIS)]
+
+# The changes are due to commune redefinitions map the IRIS to communes
+# 1) 76108XXXX -> 76095
+# https://www.insee.fr/fr/metadonnees/cog/commune/COM76108-bois-guillaume
+new_commune1 <- iris_poly19$CODE_IRIS[grep("76095",iris_poly19$CODE_IRIS)]
+new_commune1 %in% geomarketing_iris
+
+# 2)  52379XXX -> 52187 (fusion)
+# https://www.insee.fr/fr/metadonnees/cog/commune/COM52379-pautaines-augeville
+new_commune2 <- iris_poly19$CODE_IRIS[grep("52187",iris_poly19$CODE_IRIS)]
+new_commune2 %in% geomarketing_iris
+geomarketing_iris[grep("(52187|52379)",geomarketing_iris)]
+iris_poly19$CODE_IRIS[grep("(52187|52379)",iris_poly19$CODE_IRIS)]
+```
+
 
 
 
