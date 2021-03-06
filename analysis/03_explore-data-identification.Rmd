@@ -1,24 +1,25 @@
 ---
-title: "Explore the available data sources"
-output: 
-  - rmarkdown::html_notebook
-  - rmarkdown::html_vignette
-vignette: >
-  %\VignetteIndexEntry{Raw-data-exploration}
-  %\VignetteEngine{knitr::rmarkdown}
-  %\VignetteEncoding{UTF-8}
+title: "03_explore-data-identification"
+author: "Luke"
+date: "2021-03-06"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: console
 ---
+
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
+  cache = TRUE,
   collapse = TRUE,
   comment = "#>",
-  message = FALSE,
-  cache = TRUE
+  autodep = TRUE,
+  warning = FALSE,
+  message = FALSE
 )
 ```
 
-```{r setup, echo=TRUE, }
+```{r setup, echo=TRUE}
 library("data.table")
 library("dplyr")
 library("sf")
@@ -229,8 +230,6 @@ new_commune2 %in% geomarketing_iris
 geomarketing_iris[grep("(52187|52379)",geomarketing_iris)]
 iris_poly19$CODE_IRIS[grep("(52187|52379)",iris_poly19$CODE_IRIS)]
 ```
-
-
 
 
 

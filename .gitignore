@@ -2,3 +2,6 @@
 .Rproj.user
 analysis/out/data
 inst/doc
+docs
+
+*_cache*

@@ -1,0 +1,136 @@
+---
+title: "04_explore-model-options"
+author: "Luke"
+date: "2021-03-06"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  cache = TRUE,
+  collapse = TRUE,
+  comment = "#>",
+  autodep = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r setup}
+library("data.table")
+library("dplyr")
+library("ggplot2")
+library("here")
+library("rrMD")
+library("stargazer")
+library("sf")
+library("stringr")
+
+source("R/helpers_data-import.R" %>% here())
+load_clean_data <- get_clean_data_loaders()
+```
+
+# Check relationships in the model data
+
+## Bivariate
+
+```{r}
+od_data <- load_clean_data$od_model_data()
+
+
+ggplot(od_data, aes(x = log(MEDIAN_INCOME),y = log(MARKET_SHARE))) +
+  geom_point()
+
+ggplot(od_data, aes(x = log(GC_DIST_KM),y = log(MARKET_SHARE))) +
+  geom_point()
+
+ggplot(od_data, aes(x = log(POP),y = log(MARKET_SHARE))) +
+  geom_point()
+
+ggplot(od_data, aes(x = COMPETITION_RADIUS_100M,y = log(MARKET_SHARE))) +
+  geom_point()
+
+ggplot(od_data, aes(x = COMPETITION_RADIUS_500M,y = log(MARKET_SHARE))) +
+  geom_point()
+
+ggplot(od_data, aes(x = COMPETITION_RADIUS_1000M,y = log(MARKET_SHARE))) +
+  geom_point()
+
+ggplot(od_data, aes(x = log(COMPETITION_RADIUS_2000M),y = log(MARKET_SHARE))) +
+  geom_point()
+```
+
+
+## Multivariate
+
+```{r lmSales,  results='asis'}
+dont_model <-  c("ID_IRIS","MARKET_SHARE")
+sales_lm <- list(
+  "default" = lm(SALES ~ ., data = od_data %>% select(-dont_model)),
+  "log" = lm(log(SALES) ~ ., data = od_data %>% select(-dont_model)),
+  "loglog" = lm(log(SALES) ~ ., data = od_data %>% select(-dont_model) %>%
+                  mutate_at(vars(-SALES,-ID_SHOP), ~log(.x + 1)))
+)
+
+stargazer(sales_lm, type = "html", column.labels = names(sales_lm),omit = "ID_SHOP.*")
+```
+
+
+```{r lmMarketShare, results='asis'}
+dont_model <-  c("ID_IRIS","SALES")
+logit <- function(x) { log(x/(1-x))}
+marlet_share_lm <- list(
+  "logit_default" = lm(logit(MARKET_SHARE) ~ ., data = od_data %>% select(-dont_model)),
+  "log_default" = lm(log(MARKET_SHARE) ~ ., data = od_data %>% select(-dont_model)),
+  "logit_log" = lm(logit(MARKET_SHARE) ~ ., data = od_data %>% select(-dont_model) %>%
+                  mutate_at(vars(-MARKET_SHARE,-ID_SHOP), ~log(.x + 1))),
+  "loglog" = lm(log(MARKET_SHARE) ~ ., data = od_data %>% select(-dont_model) %>%
+                     mutate_at(vars(-MARKET_SHARE,-ID_SHOP), ~log(.x + 1)))
+)
+
+stargazer(marlet_share_lm, type = "html",no.space = TRUE,
+          omit = "ID_SHOP.*",
+          colnames = FALSE,
+          column.labels = "",
+          model.names = FALSE)
+```
+
+## Multivariate (restrict to 50km flows)
+
+```{r lmSales50km,  results='asis'}
+dont_model <-  c("ID_IRIS","ID_SHOP","MARKET_SHARE")
+od_data <- od_data %>% filter(GC_DIST_KM < 50)
+sales_lm <- list(
+  "default" = lm(SALES ~ ., data = od_data %>% select(-dont_model)),
+  "log" = lm(log(SALES) ~ ., data = od_data %>% select(-dont_model)),
+  "loglog" = lm(log(SALES) ~ ., data = od_data %>% select(-dont_model) %>%
+                  mutate_at(vars(-SALES), ~log(.x + 1)))
+)
+
+stargazer(sales_lm, type = "html", column.labels = names(sales_lm))
+```
+
+
+```{r lmMarketShare50km, results='asis'}
+dont_model <-  c("ID_IRIS","ID_SHOP","SALES")
+logit <- function(x) { log(x/(1-x))}
+marlet_share_lm <- list(
+  "logit_default" = lm(logit(MARKET_SHARE) ~ ., data = od_data %>% select(-dont_model)),
+  "log_default" = lm(log(MARKET_SHARE) ~ ., data = od_data %>% select(-dont_model)),
+  "logit_log" = lm(logit(MARKET_SHARE) ~ ., data = od_data %>% select(-dont_model) %>%
+                  mutate_at(vars(-MARKET_SHARE), ~log(.x + 1))),
+  "loglog" = lm(log(MARKET_SHARE) ~ ., data = od_data %>% select(-dont_model) %>%
+                     mutate_at(vars(-MARKET_SHARE), ~log(.x + 1)))
+)
+
+
+
+stargazer(marlet_share_lm, type = "html",no.space = TRUE,
+          colnames = FALSE,
+          column.labels = "",
+          model.names = FALSE)
+```
+

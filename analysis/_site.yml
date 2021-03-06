@@ -9,9 +9,66 @@ navbar:
     href: about.html
   - text: License
     href: license.html
+  - text: Exploration Notebooks
+    menu:
+    - text: "Explore Sales Data"
+      href: 01_explore-customer-data.html
+    - text: "Explore Market Data (DEP level)"
+      href: 02_explore-market-data.html
+    - text: "Explore the identification"
+      href: 03_explore-data-identification.html
+    - text: "Explore model options"
+      href: 04_explore-model-options.html
+    - text: "Explore linear correlations"
+      href: 05_explore-data-correlations.html
 output:
   workflowr::wflow_html:
     toc: yes
     toc_float: yes
     theme: cosmo
     highlight: textmate
+
+
+# old example...
+# name: "CityHopperMarket"
+# output_dir: ../docs
+# navbar:
+#   title: "CityHopperMarket"
+#   left:
+#   - text: Home
+#     href: index.html
+#   - text: Define Inputs
+#     menu:
+#     - text: "Assumptions"
+#       href: 01-define_assumptions.html
+#     - text: "Gasoline scenario"
+#       href: 02-define_gasoline-scenario.html
+#   - text: Results
+#     menu:
+#     - text: "Traffic forecast"
+#       href: 32-present_pax-forecast.html
+#     - text: "Multimodal competition"
+#       href: 33-present_multi-modal-panorama-competition_all-ecosystems.html
+#     - text: "LEK Sensitivities"
+#       href: 35-present_LEK-sensitivity.html
+#   - text: Deliverables
+#     menu:
+#     - text: "Master Thesis"
+#       href: ../deliverables/MasterThesis.pdf
+#     - text: "Presentation Uni (20min)"
+#       href: ../deliverables/CityHopperPres - Uni.pdf
+#   - text: Function Reference
+#     href: ../pkgdown/reference/index.html
+#   - text: Older versions
+#     menu:
+#     - text: "Model estimation"
+#       href: ../depricated/old-notebooks/21_Estimate_MarketShare_and_RouteActivation.html
+#     - text: "Vizualize results"
+#       href: ../depricated/old-notebooks/41_VIZ_results_anonymized4.html
+#
+# output:
+#   workflowr::wflow_html:
+#     toc: yes
+#     toc_float: yes
+#     theme: cosmo
+#     highlight: textmate

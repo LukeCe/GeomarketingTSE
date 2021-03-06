@@ -1,0 +1,122 @@
+---
+title: "05_explore-data-correlations"
+author: "Luke"
+date: "2021-03-06"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  cache = TRUE,
+  collapse = TRUE,
+  comment = "#>",
+  autodep = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r setup}
+library("corrplot")
+library("data.table")
+library("dplyr")
+library("ggplot2")
+library("here")
+library("kableExtra")
+library("PerformanceAnalytics")
+library("rrMD")
+library("skimr")
+library("sf")
+library("stringr")
+
+source("R/helpers_data-import.R" %>% here())
+load_clean_data <- get_clean_data_loaders()
+origin_iris <- load_clean_data$origin_iris()
+dest_shops <- load_clean_data$destination_shops()
+od_market_shares <- load_clean_data$od_market_shares()
+
+```
+
+# Investiage the diffrent data sources
+
+## Correlations in the origin data
+
+We try to find out whether it is more appropriate to use variables as logs or absolutes.
+
+```{r origCorr}
+orig_model_vars <- c("MEDIAN_INCOME", "MARKET_POTENTIAL", "POP")
+orig_matrix <- 
+  origin_iris %>% select(orig_model_vars) %>% st_drop_geometry()
+# original vars
+chart.Correlation(orig_matrix) 
+# log vars
+chart.Correlation(orig_matrix %>% mutate_all(function(x) log(x + 1)))
+# mixed
+chart.Correlation(orig_matrix %>% mutate_at(vars(MEDIAN_INCOME,POP),
+                                              function(x) log(x + 1)))
+```
+
+## Correlations in the destination data
+
+
+```{r destCorr}
+total_sales <- od_market_shares[,.(SALES = sum(SALES)), by = ID_SHOP]
+setDT(dest_shops)[total_sales, SALES := SALES , on = "ID_SHOP"]
+
+dest_model_vars <- names(dest_shops) %>% 
+  str_extract(pattern = "(SALES|COMPETE_DIST.*)") %>% 
+  lfilter(Negate(is.na))
+dest_matrix <- dest_shops[,..dest_model_vars]
+chart.Correlation(dest_matrix)
+```
+
+## Missing data in the origin-destination data
+
+This data will be used for the model.
+We have to find out how to deal appropriately with the issue of missing data.
+
+```{r odInfos, results='asis'}
+# add info on destinations
+dest_infos <- dest_shops %>% select(matches("(ID.*|COMPETE.*)")) %>% setDT()
+dest_vars <- names(dest_infos)[-1]
+od_market_shares[dest_infos,
+                 (dest_vars) := mget(paste0("i.", dest_vars)),
+                 on = "ID_SHOP"]
+
+# add info on origins
+orig_infos <- origin_iris %>% setDT() %>% 
+  select(ID_IRIS,POP,MEDIAN_INCOME,MARKET_POTENTIAL)
+orig_vars <- names(orig_infos)[-1]
+od_market_shares[orig_infos,
+                 (orig_vars) := mget(paste0("i.", orig_vars)),
+                 on = "ID_IRIS"]
+
+suppressWarnings(skim(od_market_shares))
+```
+
+```{r odCorr, message=FALSE,warning=FALSE}
+od_market_shares_corrs <- copy(od_market_shares)
+suppressWarnings({
+  od_market_shares_corrs[
+    ,LOGIT_MARKET_SHARE := log(MARKET_SHARE / (1 - MARKET_SHARE))]
+})
+od_market_shares_corrs[,1:2 := NULL]
+od_market_shares_corrs <- od_market_shares_corrs[
+  is.finite(MARKET_SHARE) 
+  & is.finite(LOGIT_MARKET_SHARE) 
+  & complete.cases(od_market_shares_corrs),
+]
+
+# The cleaned data as ... rows
+od_market_shares_corrs %>% nrow()
+corrplot(cor(od_market_shares_corrs),
+         tl.pos	= "n",type = "upper",
+         method = "ellipse",order = "hclust")
+corrplot(cor(od_market_shares_corrs),add = TRUE,
+         tl.pos	= "d",type = "lower",tl.cex = 0.5,
+         method = "number",order = "hclust")
+```
+

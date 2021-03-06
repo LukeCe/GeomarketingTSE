@@ -12,7 +12,8 @@ get_raw_data_loaders <- function(){
     iris_poly19 = "0001-1_iris-polygons-2019_ign.RData",
     iris_poly16 = "0022-1_iris-polygons-2016_ign.RData",
     iris_poly15 = "0023-1_iris-polygons-2015_ign.RData",
-    iris_poly14 = "0024-1_iris-polygons-2014_ign.RData") %>%
+    iris_poly14 = "0024-1_iris-polygons-2014_ign.RData",
+    dep_poly16 = "0025-1_dep-polygons-2016_ign.RData") %>%
     lapply(FUN = function(s) paste0(raw_data_location,s))
 
 
@@ -25,9 +26,10 @@ get_clean_data_loaders <- function(){
   # 1. Declare data sources
   clean_data_location <- rrMD::dir_out_data()
   import_files <- list(
-    origin_iris = "origin_iris",
-    destination_shops = "destination_shops",
-    od_customer_flows = "od_customer_flows") %>%
+    origin_iris = "origin_iris.RData",
+    destination_shops = "destination_shops.RData",
+    od_market_shares = "od_market_shares.RData",
+    od_model_data = "od_market_shares_lm.RData") %>%
     lapply(FUN = function(s) paste0(clean_data_location,s))
 
 
