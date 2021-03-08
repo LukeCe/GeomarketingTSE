@@ -28,10 +28,28 @@ get_clean_data_loaders <- function(){
   import_files <- list(
     origin_iris = "origin_iris.RData",
     destination_shops = "destination_shops.RData",
+    candidate_shops = "candidate-shops.RData",
+    trade_area_dist_stats = "distance-trade-area-stats.RData",
+    trade_area_dist_zones = "distance-trade-area-zones.RData",
     od_market_shares = "od_market_shares.RData",
     od_model_data = "od_market_shares_lm.RData") %>%
     lapply(FUN = function(s) paste0(clean_data_location,s))
 
+
+  # 2. Assign importers
+  import_functions <- import_files %>%
+    lapply(function(f) x <- function() rrMD::load_as(f))
+
+}
+
+
+get_model_loaders <- function(){
+  # 1. Declare data sources
+  model_locations <- rrMD::dir_out_data()
+  import_files <- list(
+    sales = "model-sales.RData",
+    market_share = "model-market-share.RData") %>%
+    lapply(FUN = function(s) paste0(model_locations,s))
 
   # 2. Assign importers
   import_functions <- import_files %>%

@@ -1,0 +1,49 @@
+---
+title: "Exploration of the available data sources"
+author: "Lukas Dargel"
+date: "2021-03-04"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  cache = TRUE,
+  collapse = TRUE,
+  comment = "#>",
+  autodep = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r setup}
+library("data.table")
+library("dplyr")
+library("here")
+library("rrMD")
+library("sf")
+library("skimr")
+```
+
+
+```{r dataLoad}
+source("R/helpers_data-import.R" %>% here())
+load_raw_data <- get_raw_data_loaders()
+```
+
+# What information do we need?
+
+The objective of the project is to create a gravity model of retail sales.
+This models the commercial flows from the point were clients live to the stores of customers.
+
++ We need information on the origins of the customers which is on IRIS level.
++ We need information on the destinations which are the shops.
++ We need informations on pairs of origins and destinations (distance and amounts of flows).
+
+To collect this information we have 4 internal sources of geomarketing data.  
+Additional information has to be found on open sources which are INSEEE census data.
+
+We consider the following data sources.

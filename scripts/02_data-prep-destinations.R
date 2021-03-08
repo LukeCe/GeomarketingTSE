@@ -47,7 +47,7 @@ competitor_counts <- competitor_distances %>%
   setnames("COMPETE_DIST" %p% competitor_distances)
 
 destination_shops <- client_shops %>%
-  select(-pos_lon, -pos_lat) %>%
+  select(-pos_lon, -pos_lat, -IRIS) %>%
   cbind(competitor_counts)
 
 # Export destination data -----------------------------------------------------

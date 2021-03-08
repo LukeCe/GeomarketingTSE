@@ -1,0 +1,150 @@
+---
+title: "Exploration of the available data sources"
+author: "Lukas Dargel"
+date: "2021-03-04"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  cache = TRUE,
+  collapse = TRUE,
+  comment = "#>",
+  autodep = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r setup}
+library("colorspace")
+library("data.table")
+library("dplyr")
+library("ggplot2")
+library("here")
+library("rrMD")
+source("R/helpers_modelling.R" %>% here())
+```
+
+
+```{r dataLoad}
+source("R/helpers_data-import.R" %>% here())
+load_raw_data <- get_raw_data_loaders()
+load_clean_data <- get_clean_data_loaders()
+load_models <- get_model_loaders()
+```
+
+
+# We try to evaluate the merits of different modelling options.
+
+The quality of our results is strongly influenced by the underlying inputs.
+
+Such choices are for example:
+- the definition of the trade area
+- the choice of variables in the models
+- the choice model itself
+
+
+## Sales models 
+
+The sales models are used to construct more advanced trade areas.
+
+## Market share models
+
+
+Lets see how different options affect the market share model.
+
+### Goodness of fit
+
+```{r}
+ms_models <- load_models$market_share()
+stargazer(ms_models, type = ifelse(interactive(),yes = "text",no = "html"))
+```
+
+
+```{r}
+raw_results <- 
+  data.frame(y_in = ms_models$base_line$model[[1]],
+             y_hat =  ms_models$base_line$fitted.values,
+             e = ms_models$base_line$residuals)
+
+ggplot(raw_results, aes(y = y_in, x = y_hat)) + 
+  geom_hex(lwd = 0.00, color = "#00000000") +
+  geom_smooth(formula= y~x -1, method = "lm", lwd = 0.3, col = "red") +
+  scale_fill_continuous_sequential(palette = "Teal") +
+  theme_rrMD() +
+  coord_equal()
+```
+
+```{r}
+ggplot(raw_results, aes(y = y_in, x = e)) + 
+  geom_hex(lwd = 0.00, color = "#00000000") +
+  geom_smooth(formula= y~x -1, method = "lm", lwd = 0.3, col = "red") +
+  scale_fill_continuous_sequential(palette = "Teal") +
+  theme_rrMD() +
+  coord_equal()
+```
+
+
+```{r}
+trans_results <- raw_results %>% mutate_all(~logit_inv(.x))
+ggplot(trans_results, aes(y = y_in, x = y_hat)) + 
+  geom_hex(lwd = 0.00, color = "#00000000") +
+  geom_smooth(formula= y~x -1, method = "lm", lwd = 0.3, col = "red") +
+  scale_fill_continuous_sequential(palette = "Teal") +
+  theme_rrMD() +
+  # scale_x_log10() +
+  # scale_y_log10() +
+  coord_equal()
+```
+
+```{r}
+ggplot(trans_results, aes(y = y_in, x = e)) + 
+  geom_hex(lwd = 0.00, color = "#00000000") +
+ # geom_smooth(formula= y~x -1, method = "lm", lwd = 0.3, col = "red") +
+  scale_fill_continuous_sequential(palette = "Teal") +
+  theme_rrMD() +
+  scale_x_log10() +
+  scale_y_log10() +
+  coord_equal()
+```
+
+### Results (Network perspective)
+
+Evaluate the results on a national level without looking at individual shops.
+
+```{r}
+od_model_data <- load_clean_data$od_model_data()
+od_model_data[,FIT_MARKET_SHARE_BASELINE  := ms_models$base_line$fitted.values %>% logit_inv(), ]
+
+market_share_perf <- od_model_data[
+  ,list(MARKET_SHARE = sum(MARKET_SHARE),
+        FIT_MARKET_SHARE_BASELINE = sum(FIT_MARKET_SHARE_BASELINE)),
+        by = "ID_IRIS"]
+
+market_share_perf[,MS_DIFF := MARKET_SHARE - FIT_MARKET_SHARE_BASELINE]
+market_share_perf[,MS_DIFF_REL := MS_DIFF/MARKET_SHARE]
+
+origin_iris <- load_clean_data$origin_iris() %>% setDT()
+origin_iris[market_share_perf, MS_DIFF := MS_DIFF, on = "ID_IRIS"]
+origin_iris[market_share_perf, MS_DIFF_REL := MS_DIFF_REL, on = "ID_IRIS"]
+origin_iris[market_share_perf, SALES_DIFF := MARKET_POTENTIAL*MS_DIFF, on = "ID_IRIS"]
+
+
+plot_iris <- origin_iris[!is.na(MS_DIFF) & substr(ID_IRIS,0,2) == "75",] %>% st_as_sf()
+ggplot(plot_iris) + geom_sf(aes(fill = SALES_DIFF/MARKET_POTENTIAL), col = NA) + 
+  scale_fill_continuous()
+
+```
+
+
+### Results (Shop perspective)
+
+
+
+
+
+

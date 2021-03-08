@@ -25,9 +25,11 @@ library("data.table")
 library("dplyr")
 library("ggplot2")
 library("here")
+library("Hmisc")
 library("rrMD")
 library("sf")
 library("skimr")
+source("R/helper-03_data-prep-od-pairs.R" %>% here())
 ```
 
 
@@ -163,5 +165,57 @@ fr_base_map +
   geom_sf(data = best_customers %>% st_as_sf(),
           mapping = aes(size = sqrt(sales),color = log(sales)), alpha = 0.5) +
   scale_color_continuous_sequential("YlGnBu")
+```
+
+
+What distance travel the customers?
+
+```{r}
+
+customer_flows[client_shops, DEST_LAT := pos_lat, on = "pos_id"]
+customer_flows[client_shops, DEST_LON := pos_lon, on = "pos_id"]
+
+customer_flows %>% add_pair_dist(orig_lat_col = "cl_lat",
+                                 orig_lon_col = "cl_lon")
+
+ggplot(customer_flows) +
+  geom_density(aes(x = GC_DIST_KM, y = ..density..)) +
+  geom_density(aes(x = GC_DIST_KM, y = ..density.., weight = sales),
+               col = "red", fill = "red", alpha = 0.3) +
+  scale_and_breaks_x_log10() +
+  theme_rrMD()
+```
+
+
+# Does this distance vary a lot by shop?
+
+```{r}
+customer_flows[client_shops, DEST_LAT := pos_lat, on = "pos_id"]
+
+my_quantile <- function(x, wt, probs) {
+  cbind(tibble(qt = quantile(x, probs), probs = probs),
+        tibble(wqt = Hmisc::wtd.quantile(x,wt, probs)))
+        
+}
+
+customer_travel_quantiles <- customer_flows %>% 
+  group_by(pos_id) %>% 
+  summarise(my_quantile(GC_DIST_KM,sales,c(0.1,0.3,0.5,.7, .9))) %>% 
+  setDT() 
+
+
+ggplot(customer_travel_quantiles, aes(x = x, group = probs)) +
+  geom_density(aes(x = qt,y = ..density.., fill = as.factor(probs)),
+       alpha = 0.6) +
+  geom_density(aes(x = wqt,y = -..density.., fill = as.factor(probs)),
+       alpha = 0.6) +
+  geom_hline(yintercept = 0, color = "red") +
+  scale_fill_discrete_qualitative(palette = "Dynamic") +
+  scale_and_breaks_x_log10() +
+  scale_y_continuous() +
+  geom_label( aes(x=Inf, y=1, label="Distance Quantiles (count)"), color="#404080",hjust =1) +
+    geom_label( aes(x=Inf, y=-1, label="Distance Quantiles (sales)"), color="#404080",hjust =1) +
+
+  theme_rrMD()
 ```
 
