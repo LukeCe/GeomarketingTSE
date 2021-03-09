@@ -9,3 +9,4 @@ knit_root_dir: "."
 
 # do not use the report
 suppress_report: TRUE
+

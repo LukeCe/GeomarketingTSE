@@ -1,0 +1,552 @@
+---
+title: "Exploration of the available data sources"
+author: "Lukas Dargel"
+date: "2021-03-04"
+output: 
+  workflowr::wflow_html:
+    code_folding: hide
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  cache = TRUE,
+  collapse = TRUE,
+  comment = "#>",
+  autodep = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r setup}
+# libraries
+library("colorspace")
+library("data.table")
+library("dplyr")
+library("DT")
+library("ggplot2")
+library("GGally")
+library("here")
+library("Hmisc")
+library("kableExtra")
+library("rrMD")
+library("sf")
+library("shiny")
+library("skimr")
+
+# data sources
+source("R/helpers_data-import.R" %>% here())
+load_raw_data <- get_raw_data_loaders()
+```
+
+# What information do we need?
+
+The objective of the project is to create a gravity model of retail sales.
+This models the commercial flows from the point were clients live to the stores of customers.
+
++ We need information on the origins of the customers which is on IRIS level.
++ We need information on the destinations which are the shops.
++ We need informations on pairs of origins and destinations (distance and amounts of flows).
+
+To collect this information we have 4 internal sources of geomarketing data.  
+Additional information has to be found on open sources which are INSEEE census data and IGN geometry.
+
+## A first glance at the data {.tabset .tabset-fade}
+
+
+Below is metadata describing the raw sources.
+
+```{r rawMeta, echo=FALSE, results='asis'}
+raw_meta_data <- import_data_registry()
+make_DT <- function(.tab) {
+  div(datatable(.tab,style = 'bootstrap4', fillContainer	= TRUE),
+      style = "font-size: 75%; width: 75%; height: 500px")
+  }
+make_DT(raw_meta_data)
+```
+
+
+Below we see the first entries (head) and some summary statistics (skim) for all data sets.
+
+
+```{r fun_head_skim, include=FALSE}
+make_head <- function(.dat) {
+  data_x <- .dat()
+  try({data_x <- st_as_sf(data_x)}, silent = TRUE)
+  head(data_x) %>% as.data.table()
+}
+
+make_skim <- function(.dat) {
+  data_x <- .dat()
+  try({data_x <- st_as_sf(data_x)}, silent = TRUE)
+  try({data_x <- st_drop_geometry(data_x)}, silent = TRUE)
+
+  as.data.table(data_x) %>% skim() %>% partition()
+}
+```
+
+
+### Head {.tabset .tabset-fade}
+
+```{r head_raw_data, results='asis', echo=FALSE}
+# head
+exclude_heads <- c("iris_poly" %p% 14:16, "departments16")
+show_heads <- load_raw_data %>% names() %>% setdiff(exclude_heads)
+data_head <- lapply(load_raw_data[show_heads],make_head)
+
+for(i in seq_along(data_head)) {
+  rrMDheader(names(data_head)[i], 4)
+  make_DT(data_head[[i]]) %>% print()
+}
+
+```
+
+
+### Skim {.tabset .tabset-fade}
+
+```{r skim_raw_data, results='asis', echo=FALSE}
+exclude_skims <- c("iris_poly" %p% 14:16, "departments16", "competitors")
+show_skims <- load_raw_data %>% names() %>% setdiff(exclude_skims)
+data_skims <- lapply(load_raw_data[show_skims],make_skim)
+
+name_and_print <- function(.sl) {
+  for (i in seq_along(.sl)) {
+    type <- "\n\n-- Variable type: %s " %p% paste(rep("-",50),collapse = "") 
+    sprintf(type, names(.sl)[i]) %>% cat()
+    make_DT(.sl[[i]]) %>% print()
+  }
+}
+
+for(i in seq_along(data_skims)) {
+  rrMDheader(names(data_skims)[i], 4)
+  data_skims[[i]] %>% name_and_print()
+}
+```
+
+
+## Investigate identification issues
+
+### Check for missing income data
+
+Check the availability of income data.
+More than half of the IRIS where our clients come from do not have information on income.
+We have to think about an imputation mechanism if we want to use this variable.
+Available imputations are data on municipalities level or data on grid level.
+
+```{r checkIrisIncome}
+iris_income <- load_raw_data$iris_income()
+client_customers <- load_raw_data$client_customers()
+fr_mun_income <- load_raw_data$mun_income()
+iris_pop <- load_raw_data$iris_pop()
+market_potential <- load_raw_data$market_potential()
+
+
+
+iris_with_income_data <- iris_income %>% 
+  filter(!is.na(iris_income$DISP_MED17)) %>% 
+  pull(IRIS) %>% 
+  unique()
+
+# the customers of our client are in 21720 IRIS
+client_iris <- client_customers$IRIS %>% unique()
+length(client_iris)
+
+has_income <- client_iris %in% iris_with_income_data
+# for 10393 of these IRIS we have information on the median income
+sum(has_income)
+# for 11327 of these IRIS we do not have information on the median income
+sum(!has_income)
+```
+
+Test if we can impute this data from the municipalities.
+
+```{r checkMunIncome}
+clients_mun <- client_customers %>% 
+  as.data.frame() %>% 
+  select(IRIS) %>% unique() %>% setDT()
+
+# correspondence between customers MUN and IRIS
+iris_pop %>% setDT()
+clients_mun[iris_pop,ID_MUN := COM, on = "IRIS",allow.cartesian = FALSE]
+
+iris_income %>% setDT()
+fr_mun_income %>% setDT()
+clients_region_incomes <- clients_mun %>% copy()
+clients_region_incomes[iris_income,MEDIAN_INCOME_IRIS := DISP_MED17,
+                       on = "IRIS"]
+clients_region_incomes[fr_mun_income,MEDIAN_INCOME_MUN := Q217,
+                       on = c(ID_MUN = "CODGEO")]
+clients_region_incomes[,MEDIAN_INCOME_1 := if_else(is.na(MEDIAN_INCOME_IRIS),
+                                                   true = MEDIAN_INCOME_MUN,
+                                                   false =MEDIAN_INCOME_IRIS)]
+```
+First check how well the identification between IRIS and municipalities works.
+
+```{r checkIdMunIris}
+# 21614 of the customers IRIS are identified with a municipality
+nrow(clients_mun %>% filter(complete.cases(.)))
+# we would loose 0.4880295 % of the customers location
+1 - nrow(clients_mun %>% filter(complete.cases(.))) / nrow(clients_mun)
+
+no_id_iris <- clients_mun %>% filter(!complete.cases(.)) %>% pull(IRIS)
+losses <- client_customers %>% 
+  as.data.frame() %>% 
+  filter(IRIS %in% no_id_iris) %>% 
+  summarise(lost_entiries = n(), lost_sales = sum(sales))
+# this corresponds to 885 observations and 563536	of sales
+losses
+totals <- client_customers %>% 
+  as.data.frame() %>% 
+  summarise(lost_entiries = n(), lost_sales = sum(sales))
+# as percentages 0.598608 % of observations, 0.5226266% of sales
+losses / totals
+```
+
+Then check of complete the information on income is.
+For now we can live with this result and decide drop some information from the data.
+
+```{r checkIdIncomeIris}
+# 21588 of the clients IRIS are identified with incomes based on MUN or IRIS
+clients_incs <- clients_region_incomes %>% 
+  select("IRIS", "MEDIAN_INCOME_1")
+nrow(clients_incs %>% filter(complete.cases(.)))
+# we would loose 0.6077348 % of the customers location
+1 - nrow(clients_incs %>% filter(complete.cases(.))) / nrow(clients_incs)
+
+no_id_iris <- clients_incs %>% filter(!complete.cases(.)) %>% pull(IRIS)
+losses <- client_customers %>% 
+  as.data.frame() %>% 
+  filter(IRIS %in% no_id_iris) %>% 
+  summarise(lost_entiries = n(), lost_sales = sum(sales))
+# this corresponds to 825 observations and 551830	of sales
+losses
+totals <- client_customers %>% 
+  as.data.frame() %>% 
+  summarise(lost_entiries = n(), lost_sales = sum(sales))
+# as percentages 0.5580244 % of observations, 0.5117703% of sales
+losses / totals
+```
+
+
+### Investigate identification with the geometries
+
+
+We can secure identification of all data points by looking at some of the previous definition of the IRIS geometries and by 
+
+```{r loadIgnData}
+iris_poly19 <- load_raw_data$iris_poly19()
+iris_poly16 <- load_raw_data$iris_poly16()
+iris_poly15 <- load_raw_data$iris_poly15()
+iris_poly14 <- load_raw_data$iris_poly14()
+
+geomarketing_iris <- market_potential$IRIS
+length(unique(geomarketing_iris))
+length(unique(iris_poly19$CODE_IRIS))
+length(unique(iris_poly16$CODE_IRIS))
+length(unique(iris_poly15$CODE_IRIS))
+length(unique(iris_poly14$DCOMIRIS))
+
+# based on 2019 IRIS we can not identify 1809 regions
+sum(!geomarketing_iris %in% iris_poly19$CODE_IRIS)
+
+# based on 2016 IRIS we can not identify 834 regions
+sum(!geomarketing_iris %in% iris_poly16$CODE_IRIS)
+
+# based on 2015 IRIS we can not identify 39 regions
+sum(!geomarketing_iris %in% iris_poly15$CODE_IRIS)
+loss <- sum(market_potential$mp[!geomarketing_iris %in% iris_poly15$CODE_IRIS])
+loss/ sum(market_potential$mp)
+
+
+# based on 2014 IRIS we can not identify 9 regions
+sum(!geomarketing_iris %in% iris_poly14$DCOMIRIS)
+
+# based on 2014 + 2015 IRIS we can not identify 4 regions
+sum(!geomarketing_iris %in% c(iris_poly14$DCOMIRIS,iris_poly15$CODE_IRIS))
+
+orphan_iris <- market_potential$IRIS[
+  !geomarketing_iris %in% c(iris_poly14$DCOMIRIS,iris_poly15$CODE_IRIS)]
+
+# The changes are due to commune redefinitions map the IRIS to communes
+# 1) 76108XXXX -> 76095
+# https://www.insee.fr/fr/metadonnees/cog/commune/COM76108-bois-guillaume
+new_commune1 <- iris_poly19$CODE_IRIS[grep("76095",iris_poly19$CODE_IRIS)]
+new_commune1 %in% geomarketing_iris
+
+# 2)  52379XXX -> 52187 (fusion)
+# https://www.insee.fr/fr/metadonnees/cog/commune/COM52379-pautaines-augeville
+new_commune2 <- iris_poly19$CODE_IRIS[grep("52187",iris_poly19$CODE_IRIS)]
+new_commune2 %in% geomarketing_iris
+geomarketing_iris[grep("(52187|52379)",geomarketing_iris)]
+iris_poly19$CODE_IRIS[grep("(52187|52379)",iris_poly19$CODE_IRIS)]
+```
+
+
+# Forming a deeper understanding
+
+Here we explore some statistics for each data source to guide our decisions in the cleaning and modelling process.
+
+## Sales and customer data
+
+A first look at the customer data reveals the following:
+
+- every client is only 1 time in the database
+- there are 63 destinations shops (pos_id)
+- 0.2% of iris are missing
+- there are negative sales (?!)
+- the maximum of sales is huge
+
+In the following we investigate the concentration and spatial distribution of this data.
+
+
+### Sales concentration
+
+
+```{r dataLoadCustomers}
+client_shops <- load_raw_data$client_shops() %>% st_as_sf()
+```
+
+Looking at the concentration of sales by customers.
+We see that 10% of the clients account for 50% of the sales.
+The same is true for the shops
+
+```{r salesConcentrationCustomer}
+customer_flows <- load_raw_data$client_customers() %>% st_as_sf() %>% setDT()
+customer_flows <- customer_flows[sales > 0,]
+customer_flows[,sales_rank:=frank(-sales,ties.method = "random")]
+setorder(customer_flows,sales_rank)
+
+nb_customer <- nrow(customer_flows)
+total_sales <- sum(customer_flows$sales)
+
+customer_flows[order(sales_rank),cum_sales := cumsum(sales)]
+customer_flows[order(sales_rank),rcum_sales := cum_sales / total_sales]
+customer_flows[,client_no := sales_rank / nb_customer]
+
+half_turnover <- customer_flows[rcum_sales < 0.5,] %>% nrow() / nb_customer 
+half_turnover <- half_turnover %>% round(2)
+
+ggplot(customer_flows) +
+  geom_line(aes(x = sales_rank/nb_customer, y = 1 - rcum_sales)) +
+  scale_x_continuous(breaks = c(seq(0,1,0.25),half_turnover),
+                     name = "Percentage of Clients") +
+  scale_y_continuous(name = "Percentage of turnover")
+```
+
+Concentration of sales by shop.
+
+```{r salesConcentrationShops}
+sales_by_shop <- 
+  customer_flows[, .(sales = sum(as.numeric(sales))), by = "pos_id"]
+sales_by_shop[,sales_rank:=frank(-sales,ties.method = "random")]
+setorder(sales_by_shop,sales_rank)
+sales_by_shop[order(sales_rank),cum_sales := cumsum(sales)]
+sales_by_shop[order(sales_rank),rcum_sales := cum_sales / total_sales]
+
+half_turnover_shops <- sales_by_shop[rcum_sales < 0.5,] %>% nrow()
+
+ggplot(sales_by_shop) +
+  geom_line(aes(x = sales_rank, y = 1 - rcum_sales)) +
+  scale_x_continuous(breaks = seq(0,65,10),name = "Number of shops") +
+  scale_y_continuous(name = "Percentage of turnover",limits = c(0,1))
+```
+
+### Spatial distribution of sales
+
+```{r baseMap, include=FALSE}
+departments <- load_raw_data$dep_poly16()
+fr_base_map <- ggplot(departments) +
+  geom_sf(fill = "grey95") +
+  theme(
+    title = element_text(),
+    plot.title = element_text(
+      margin = margin(20, 20, 20, 20),
+      size = 18,
+      hjust = 0.5),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.background = element_blank()
+  )
+```
+
+Where are where are the best shop?
+
+```{r mapShops}
+client_shops <- load_raw_data$client_shops() %>% st_as_sf() %>% setDT()
+client_shops[sales_by_shop, sales := sales, on = "pos_id"]
+client_shops %>% setorder(sales)
+
+fr_base_map + 
+  geom_sf(data = client_shops %>% st_as_sf(),
+          mapping = aes(size = sqrt(sales),color = log(sales)), alpha = 0.8) +
+  scale_color_continuous_sequential("YlGnBu")
+```
+
+Where are the best customers?
+
+```{r mapCustomers}
+best_customers <- customer_flows[rcum_sales < 0.5,]
+best_customers %>% setorder(-sales_rank)
+
+fr_base_map + 
+  geom_sf(data = best_customers %>% st_as_sf(),
+          mapping = aes(size = sqrt(sales),color = log(sales)), alpha = 0.5) +
+  scale_color_continuous_sequential("YlGnBu")
+```
+
+### What role plays distance?
+
+What distance travel the customers?
+
+```{r customer_distance}
+source("R/helper-03_data-prep-od-pairs.R" %>% here())
+customer_flows[client_shops, DEST_LAT := pos_lat, on = "pos_id"]
+customer_flows[client_shops, DEST_LON := pos_lon, on = "pos_id"]
+
+customer_flows %>% add_pair_dist(orig_lat_col = "cl_lat",
+                                 orig_lon_col = "cl_lon")
+
+ggplot(customer_flows) +
+  geom_density(aes(x = GC_DIST_KM + 0.1, y = ..density..)) +
+  geom_density(aes(x = GC_DIST_KM + 0.1, y = ..density.., weight = sales),
+               col = "red", fill = "red", alpha = 0.3) +
+  scale_and_breaks_x_log10() +
+  theme_rrMD()
+```
+
+
+Does this distance vary a lot by shop?
+
+```{r customer_distance_quantiles}
+my_quantile <- function(x, wt, probs) {
+  cbind(tibble(qt = quantile(x, probs), probs = probs),
+        tibble(wqt = Hmisc::wtd.quantile(x,wt, probs)))
+        
+}
+
+customer_travel_quantiles <- customer_flows %>% 
+  group_by(pos_id) %>% 
+  summarise(my_quantile(GC_DIST_KM,sales,c(0.1,0.3,0.5,.7, .9))) %>% 
+  setDT() 
+
+
+ggplot(customer_travel_quantiles, aes(x = x, group = probs)) +
+  geom_density(aes(x = qt,y = ..density.., fill = as.factor(probs)),
+       alpha = 0.6) +
+  geom_density(aes(x = wqt,y = -..density.., fill = as.factor(probs)),
+       alpha = 0.6) +
+  geom_hline(yintercept = 0, color = "red") +
+  scale_fill_discrete_qualitative(palette = "Dynamic") +
+  scale_and_breaks_x_log10() +
+  scale_y_continuous() +
+  geom_label( aes(x=Inf, y=1, label="Distance Quantiles (count)"), color="#404080",hjust =1) +
+    geom_label( aes(x=Inf, y=-1, label="Distance Quantiles (sales)"), color="#404080",hjust =1) +
+
+  theme_rrMD()
+```
+
+### What position has our client in the market?
+
+We only captured 0.345% of the national market, which means that we probably observe only a subset of the customers of our client.
+
+
+```{r nationalMarketShare}
+market_potential <- load_raw_data$market_potential()
+competitors <- load_raw_data$competitors() 
+
+# add sales to client shops
+customer_spending <- load_raw_data$client_customers() %>% st_as_sf() %>% setDT()
+customer_spending <- customer_spending[
+  sales > 0,.(sales = sum(as.numeric(sales))), by = "pos_id"]
+client_shops[customer_spending, sales := sales ,  on = "pos_id"]
+
+sum(client_shops$sales) / sum(market_potential$mp)
+```
+
+
+The average sales of client and competitors shops are plausible.
+
+```{r aggregateDep, results='show'}
+department_stats <- market_potential[
+  , ID_DEP := substr(IRIS,0,2)
+  ][, .(MARKET_POTENTIAL = sum(mp)), by = "ID_DEP"]
+
+department_SALES <- client_shops[
+  , ID_DEP := substr(IRIS,0,2)
+  ][, .(CLIENT_SALES = sum(sales)), by = "ID_DEP"]
+
+departments <- st_transform(departments %>% st_as_sf(),"WGS84")
+competitors_dep <- competitors %>%
+  st_as_sf(coords = c("longitude","latitude")) %>%
+  `st_crs<-`(st_crs(departments)) %>%
+  select(SIREN) %>% 
+  st_join(departments %>% select(CODE_DEPT)) %>% 
+  group_by(CODE_DEPT) %>% 
+  summarise(N_COMPETITOR = n()) %>% 
+  st_drop_geometry() %>% 
+  setDT()
+
+department_stats[department_SALES, CLIENT_SALES := CLIENT_SALES, on = "ID_DEP"]
+department_stats[,CLIENT_MARKET_SHARE := CLIENT_SALES / MARKET_POTENTIAL]
+department_stats[competitors_dep, N_COMPETITOR := N_COMPETITOR,
+                 on = c(ID_DEP = "CODE_DEPT")]
+department_stats[setDT(departments),geometry := geometry, on = c(ID_DEP = "CODE_DEPT")]
+department_stats <- department_stats %>% st_as_sf()
+
+```
+
+
+Our clients market share goes up when there is higher market potential and more competitors.
+Which means that he focusses probably on attractive spots in the market.
+
+
+```{r corrDepLevel, warning=FALSE}
+suppressWarnings({
+department_stats %>% 
+  st_as_sf() %>% 
+  st_drop_geometry() %>% 
+  select(-ID_DEP) %>% as.data.frame() %>% filter(complete.cases(.)) %>% 
+  ggpairs(na.rm = TRUE,na.action="na.omit") + theme_rrMD()
+})
+```
+
+Then lets check how our client sales differs from the ones of the competitors.
+The averages a quite different but plausible.
+
+```{r average_sales_by_department, include=TRUE}
+# our client shops have average sales of 1,6mio
+avg_client_sales <- with(department_stats,
+                         sum(CLIENT_SALES,na.rm = T)/63)
+avg_client_sales
+
+# our competitors shops have average sales of 0,4mio
+avg_compet_sales <- with(department_stats,
+                         sum(MARKET_POTENTIAL)/sum(N_COMPETITOR))
+avg_compet_sales
+```
+
+Our shop is definitely not representative for the actors in the market.
+
+```{r plotMeanShopSales}
+ggplot(department_stats) +
+  geom_point(aes(y = MARKET_POTENTIAL/N_COMPETITOR, x = ID_DEP),
+             na.rm = TRUE) +
+  geom_point(aes(y = CLIENT_SALES, x = ID_DEP), col = "red",
+             na.rm = TRUE) +
+  geom_hline(aes(yintercept = avg_compet_sales)) +
+  geom_hline(aes(yintercept = avg_client_sales), col = "red") +
+  scale_and_breaks_y_log10() +
+  theme_rrMD() + theme(axis.text.x = element_text(angle = 65))
+```
+
+
+
+
+

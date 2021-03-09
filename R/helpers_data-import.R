@@ -1,7 +1,8 @@
-get_raw_data_loaders <- function(){
-  # 1. Declare data sources
-  raw_data_location <- "~/Projects/DataLake/data/"
-  import_files <- list(
+library("data.table")
+library("dplyr")
+
+declare_raw_import_files <- function(){
+  list(
     competitors = "0016-1_tse-geomarketing-trade-register-competitiors_bva.RData",
     market_potential = "0014-1_tse-geomarketing-market-potential_bva.RData",
     client_shops = "0009-1_tse-geomarketing-shops_bva.RData",
@@ -13,9 +14,14 @@ get_raw_data_loaders <- function(){
     iris_poly16 = "0022-1_iris-polygons-2016_ign.RData",
     iris_poly15 = "0023-1_iris-polygons-2015_ign.RData",
     iris_poly14 = "0024-1_iris-polygons-2014_ign.RData",
-    dep_poly16 = "0025-1_dep-polygons-2016_ign.RData") %>%
-    lapply(FUN = function(s) paste0(raw_data_location,s))
+    dep_poly16 = "0025-1_dep-polygons-2016_ign.RData")
+}
 
+get_raw_data_loaders <- function(){
+  # 1. Declare data sources
+  raw_data_location <- "~/Projects/DataLake/data/"
+  import_files <- declare_raw_import_files() %>%
+    lapply(FUN = function(s) paste0(raw_data_location,s))
 
   # 2. Assign importers
   import_functions <- import_files %>%
@@ -54,5 +60,10 @@ get_model_loaders <- function(){
   # 2. Assign importers
   import_functions <- import_files %>%
     lapply(function(f) x <- function() rrMD::load_as(f))
+}
 
+import_data_registry <- function(){
+  raw_data_registry <- "~/Projects/DataLake/DataSources.csv"
+  fread(raw_data_registry,stringsAsFactors=FALSE) %>%
+    filter(LOCATION_IN_RDATA %in% unlist(declare_raw_import_files()))
 }
