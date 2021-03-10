@@ -1,0 +1,34 @@
+---
+title: "Exploration some of the available modelling options"
+author: "Lukas Dargel"
+date: "2021-03-04"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  cache = TRUE,
+  collapse = TRUE,
+  comment = "#>",
+  autodep = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r setup}
+library("data.table")
+library("dplyr")
+library("ggplot2")
+library("here")
+library("rrMD")
+library("stargazer")
+library("sf")
+library("stringr")
+
+source("R/helpers_data-import.R" %>% here())
+```
+

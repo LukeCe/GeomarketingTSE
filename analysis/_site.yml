@@ -3,24 +3,16 @@ output_dir: ../docs
 navbar:
   title: "cg2021LukasFinalProject"
   left:
-  - text: Home
-    href: index.html
-  - text: About
-    href: about.html
-  - text: License
-    href: license.html
-  - text: Exploration Notebooks
+  - text: Instructions
+    href: Project-2021.pdf
+  # - text: About
+  #   href: about.html
+  # - text: License
+  #   href: license.html
+  - text: Notebooks
     menu:
-    - text: "Explore Sales Data"
-      href: 01_explore-customer-data.html
-    - text: "Explore Market Data (DEP level)"
-      href: 02_explore-market-data.html
-    - text: "Explore the identification"
-      href: 03_explore-data-identification.html
-    - text: "Explore model options"
-      href: 04_explore-model-options.html
-    - text: "Explore linear correlations"
-      href: 05_explore-data-correlations.html
+    - text: "Explore the available data sources"
+      href: 01_explore-input-data.html
 output:
   workflowr::wflow_html:
     toc: yes
